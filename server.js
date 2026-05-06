@@ -28,7 +28,7 @@ const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
     if (!file.mimetype.startsWith("image/")) {
       return cb(new Error("Apenas imagens são permitidas!"));
@@ -40,6 +40,10 @@ const upload = multer({
 function isAdmin(req) {
   return req.headers.authorization === process.env.ADMIN_TOKEN;
 }
+
+app.get("/", (req, res) => {
+  res.send("API do evento está online 🚀");
+});
 
 app.post("/upload", upload.single("photo"), (req, res) => {
   try {
@@ -58,7 +62,7 @@ app.post("/upload", upload.single("photo"), (req, res) => {
           success: true,
           url: result.secure_url,
           public_id: result.public_id,
-          created_at: result.created_at
+          created_at: result.created_at,
         });
       }
     );
@@ -83,22 +87,13 @@ app.get("/photos", async (req, res) => {
   }
 });
 
-/* ================================
-   DELETE (CORRIGIDO E MAIS SEGURO)
-================================ */
 app.post("/delete", async (req, res) => {
   try {
-    console.log("HEADERS:", req.headers);
-    console.log("BODY:", req.body);
-
     if (!isAdmin(req)) {
-      console.log("ADMIN FALHOU");
       return res.status(403).json({ error: "Sem permissão" });
     }
 
     const { public_id } = req.body;
-
-    console.log("PUBLIC_ID:", public_id);
 
     if (!public_id) {
       return res.status(400).json({ error: "ID inválido" });
@@ -106,12 +101,8 @@ app.post("/delete", async (req, res) => {
 
     const result = await cloudinary.uploader.destroy(public_id);
 
-    console.log("CLOUDINARY RESULT:", result);
-
     res.json({ success: true, result });
-
   } catch (err) {
-    console.log("ERRO:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -120,7 +111,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
   console.log(`Servidor a correr na porta ${PORT}`);
 });
