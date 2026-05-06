@@ -38,8 +38,9 @@
     </div>
 
     <script>
+        const API = "https://galeriaxv.onrender.com";
         async function loadPhotos() {
-            const res = await fetch("http://localhost:3000/photos");
+            const res = await fetch(`${API}/photos`);
             const photos = await res.json();
 
             const gallery = document.getElementById("gallery");
@@ -86,7 +87,7 @@
             status.innerText = "A enviar momento mágico...";
 
             try {
-                const res = await fetch("http://localhost:3000/upload", {
+                const res = await fetch(`${API}/upload`, {
                     method: "POST",
                     body: formData
                 });
@@ -140,7 +141,7 @@
             const token = prompt("Código de administrador:");
 
             try {
-                const res = await fetch("http://localhost:3000/delete", {
+                const res = await fetch(`${API}/delete`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
