@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galeria do Evento | 15 Anos</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="main-gallery-wrapper">
+
+        <header class="gallery-header">
+            <div class="title-container">
+                <h1>Meus 15 Anos</h1>
+                <p>Memórias Eternizadas</p>
+            </div>
+
+            <div class="upload-area">
+                <div class="static-upload-btn" onclick="openFile()">
+                    <i class="fa-solid fa-camera"></i>
+                    <span>Adicionar Foto</span>
+                </div>
+                <input type="file" id="file" accept="image/*">
+            </div>
+        </header>
+
+        <div class="system-messages">
+            <p id="status"></p>
+            <img id="preview" style="display:none;" />
+        </div>
+
+        <div class="gold-line"></div>
+
+        <div id="gallery" class="masonry-grid"></div>
+    </div>
+
+    <script>
+        async function loadPhotos() {
+            const res = await fetch("http://localhost:3000/photos");
+            const photos = await res.json();
+
+            const gallery = document.getElementById("gallery");
+            gallery.innerHTML = "";
+
+            photos.forEach(photo => {
+                const card = document.createElement("div");
+                card.className = "photo-card";
+
+                card.innerHTML = `
+      <div class="image-container">
+        <img src="${photo.secure_url}" loading="lazy" />
+      </div>
+
+      <div class="card-footer">
+        <div class="download-action-btn" onclick="downloadImage('${photo.secure_url}')" title="Baixar Foto">
+          <i class="fa-solid fa-download"></i>
+        </div>
+
+        <div class="delete-action-btn" onclick="deleteImage('${photo.public_id}')" title="Apagar Foto">
+          <i class="fa-solid fa-trash"></i>
+        </div>
+      </div>
+    `;
+
+                gallery.appendChild(card);
+            });
+        }
+
+        async function uploadImage() {
+            const fileInput = document.getElementById("file");
+            const file = fileInput.files[0];
+            const status = document.getElementById("status");
+            const preview = document.getElementById("preview");
+
+            if (!file) {
+                status.innerText = "Seleciona uma imagem primeiro.";
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("photo", file);
+
+            status.innerText = "A enviar momento mágico...";
+
+            try {
+                const res = await fetch("http://localhost:3000/upload", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.error);
+
+                preview.src = data.url;
+                preview.style.display = "block";
+
+                status.innerText = "Upload feito com sucesso!";
+
+                loadPhotos();
+
+            } catch (err) {
+                console.error(err);
+                status.innerText = "Erro: " + err.message;
+            }
+        }
+
+        function downloadImage(url) {
+            fetch(url)
+                .then(res => res.blob())
+                .then(blob => {
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = blobUrl;
+                    a.download = "foto-15-anos.jpg";
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(blobUrl);
+                })
+                .catch(err => {
+                    console.error("Erro ao baixar:", err);
+                    alert("Não foi possível baixar a imagem");
+                });
+        }
+
+        function openFile() {
+            document.getElementById("file").click();
+        }
+
+        document.getElementById("file").addEventListener("change", uploadImage);
+
+        async function deleteImage(publicId) {
+            const confirmDelete = confirm("Tens a certeza que queres apagar esta foto?");
+            if (!confirmDelete) return;
+
+            const token = prompt("Código de administrador:");
+
+            try {
+                const res = await fetch("http://localhost:3000/delete", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": token
+                    },
+                    body: JSON.stringify({ public_id: publicId })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.error);
+
+                alert("Imagem apagada com sucesso!");
+                loadPhotos();
+
+            } catch (err) {
+                alert("Erro: " + err.message);
+            }
+        }
+
+        loadPhotos();
+    </script>
+
+</body>
+
+</html>
