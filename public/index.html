@@ -36,46 +36,65 @@
 
         <div id="gallery" class="masonry-grid"></div>
     </div>
+    <div id="lightbox" class="lightbox">
+        <img id="lightbox-img" />
+    </div>
 
-   <script>
-const API = "https://galeriaxv.onrender.com";
+    <script>
+        const API = "https://galeriaxv.onrender.com";
 
-let lastCount = 0;
+        let lastCount = 0;
 
-/* =========================
-   CARREGAR FOTOS
-========================= */
-async function loadPhotos() {
-    try {
-        const res = await fetch(`${API}/photos`);
-        const photos = await res.json();
+        function openLightbox(url) {
+            const lightbox = document.getElementById("lightbox");
+            const img = document.getElementById("lightbox-img");
 
-        const gallery = document.getElementById("gallery");
+            img.src = url;
+            lightbox.style.display = "flex";
+        }
 
-        // só atualiza se houver mudanças
-        if (photos.length === lastCount) return;
-        lastCount = photos.length;
+        function closeLightbox() {
+            document.getElementById("lightbox").style.display = "none";
+        }
 
-        gallery.innerHTML = "";
+        document.getElementById("lightbox").addEventListener("click", (e) => {
+            if (e.target.id === "lightbox") {
+                closeLightbox();
+            }
+        });
+        async function loadPhotos() {
+            try {
+                const res = await fetch(`${API}/photos`);
+                const photos = await res.json();
 
-        photos.forEach(photo => {
+                const gallery = document.getElementById("gallery");
 
-            const optimizedImage =
-                photo.secure_url.replace(
-                    "/upload/",
-                    "/upload/w_600,q_auto,f_auto/"
-                );
 
-            const card = document.createElement("div");
-            card.className = "photo-card";
+                if (photos.length === lastCount) return;
+                lastCount = photos.length;
 
-            card.innerHTML = `
+                gallery.innerHTML = "";
+
+                photos.forEach(photo => {
+
+                    const optimizedImage =
+                        photo.secure_url.replace(
+                            "/upload/",
+                            "/upload/w_600,q_auto,f_auto/"
+                        );
+
+                    const card = document.createElement("div");
+                    card.className = "photo-card";
+
+                    card.innerHTML = `
                 <div class="image-container">
                     <img 
-                        src="${optimizedImage}" 
-                        loading="lazy"
-                        alt="Foto do evento"
-                    />
+    src="${optimizedImage}" 
+    loading="lazy"
+    alt="Foto do evento"
+    onclick="openLightbox('${photo.secure_url}')"
+    style="cursor:pointer;"
+/>
                 </div>
 
                 <div class="card-footer">
@@ -97,203 +116,180 @@ async function loadPhotos() {
                 </div>
             `;
 
-            gallery.appendChild(card);
-        });
+                    gallery.appendChild(card);
+                });
 
-    } catch (err) {
-        console.error(err);
-    }
-}
-
-/* =========================
-   COMPRESSÃO DE IMAGEM
-========================= */
-async function compressImage(file) {
-    return new Promise((resolve) => {
-
-        const img = new Image();
-        const reader = new FileReader();
-
-        reader.readAsDataURL(file);
-
-        reader.onload = (e) => {
-
-            img.src = e.target.result;
-
-            img.onload = () => {
-
-                const canvas = document.createElement("canvas");
-
-                const MAX_WIDTH = 1600;
-
-                let width = img.width;
-                let height = img.height;
-
-                if (width > MAX_WIDTH) {
-                    height *= MAX_WIDTH / width;
-                    width = MAX_WIDTH;
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-
-                const ctx = canvas.getContext("2d");
-
-                ctx.drawImage(img, 0, 0, width, height);
-
-                canvas.toBlob((blob) => {
-                    resolve(blob);
-                }, "image/jpeg", 0.7);
-
-            };
-
-        };
-
-    });
-}
-
-/* =========================
-   UPLOAD MÚLTIPLO ESTÁVEL
-========================= */
-async function uploadImage() {
-
-    const fileInput = document.getElementById("file");
-    const files = Array.from(fileInput.files);
-    const status = document.getElementById("status");
-
-    if (!files.length) {
-        status.innerText = "Seleciona imagens.";
-        return;
-    }
-
-    if (files.length > 10) {
-        status.innerText = "Máximo 10 imagens por vez.";
-        return;
-    }
-
-    status.innerText = `A enviar ${files.length} imagens...`;
-
-    try {
-
-        // envio controlado (mais estável que Promise.all)
-        for (const file of files) {
-
-            status.innerText = `A processar ${file.name}...`;
-
-            const compressed = await compressImage(file);
-
-            const formData = new FormData();
-            formData.append("photo", compressed, file.name);
-
-            const res = await fetch(`${API}/upload`, {
-                method: "POST",
-                body: formData
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.error || "Erro no upload");
+            } catch (err) {
+                console.error(err);
             }
         }
 
-        status.innerText = "Upload concluído!";
-        fileInput.value = "";
+        async function compressImage(file) {
+            return new Promise((resolve) => {
 
-        loadPhotos();
+                const img = new Image();
+                const reader = new FileReader();
 
-    } catch (err) {
-        console.error(err);
-        status.innerText = "Erro: " + err.message;
-    }
-}
+                reader.readAsDataURL(file);
 
-/* =========================
-   DOWNLOAD
-========================= */
-function downloadImage(url) {
-    fetch(url)
-        .then(res => res.blob())
-        .then(blob => {
+                reader.onload = (e) => {
 
-            const blobUrl = window.URL.createObjectURL(blob);
+                    img.src = e.target.result;
 
-            const a = document.createElement("a");
-            a.href = blobUrl;
-            a.download = "foto-15-anos.jpg";
+                    img.onload = () => {
 
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
+                        const canvas = document.createElement("canvas");
 
-            window.URL.revokeObjectURL(blobUrl);
+                        const MAX_WIDTH = 1600;
 
-        })
-        .catch(err => {
-            console.error(err);
-            alert("Não foi possível baixar a imagem.");
-        });
-}
+                        let width = img.width;
+                        let height = img.height;
 
-/* =========================
-   DELETE
-========================= */
-async function deleteImage(publicId) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
 
-    const confirmDelete = confirm("Tens a certeza?");
-    if (!confirmDelete) return;
+                        canvas.width = width;
+                        canvas.height = height;
 
-    const token = prompt("Código de administrador:");
-    if (!token) return;
+                        const ctx = canvas.getContext("2d");
 
-    try {
+                        ctx.drawImage(img, 0, 0, width, height);
 
-        const res = await fetch(`${API}/delete`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": token
-            },
-            body: JSON.stringify({
-                public_id: publicId
-            })
-        });
+                        canvas.toBlob((blob) => {
+                            resolve(blob);
+                        }, "image/jpeg", 0.7);
 
-        const data = await res.json();
+                    };
 
-        if (!res.ok) {
-            throw new Error(data.error);
+                };
+
+            });
         }
 
-        alert("Imagem apagada!");
+        async function uploadImage() {
+
+            const fileInput = document.getElementById("file");
+            const files = Array.from(fileInput.files);
+            const status = document.getElementById("status");
+
+            if (!files.length) {
+                status.innerText = "Seleciona imagens.";
+                return;
+            }
+
+            if (files.length > 10) {
+                status.innerText = "Máximo 10 imagens por vez.";
+                return;
+            }
+
+            status.innerText = `A enviar ${files.length} imagens...`;
+
+            try {
+
+                for (const file of files) {
+
+                    status.innerText = `A processar ${file.name}...`;
+
+                    const compressed = await compressImage(file);
+
+                    const formData = new FormData();
+                    formData.append("photo", compressed, file.name);
+
+                    const res = await fetch(`${API}/upload`, {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        throw new Error(data.error || "Erro no upload");
+                    }
+                }
+
+                status.innerText = "Upload concluído!";
+                fileInput.value = "";
+
+                loadPhotos();
+
+            } catch (err) {
+                console.error(err);
+                status.innerText = "Erro: " + err.message;
+            }
+        }
+
+        function downloadImage(url) {
+            fetch(url)
+                .then(res => res.blob())
+                .then(blob => {
+
+                    const blobUrl = window.URL.createObjectURL(blob);
+
+                    const a = document.createElement("a");
+                    a.href = blobUrl;
+                    a.download = "foto-15-anos.jpg";
+
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+
+                    window.URL.revokeObjectURL(blobUrl);
+
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Não foi possível baixar a imagem.");
+                });
+        }
+
+        async function deleteImage(publicId) {
+
+            const confirmDelete = confirm("Tens a certeza?");
+            if (!confirmDelete) return;
+
+            const token = prompt("Código de administrador:");
+            if (!token) return;
+
+            try {
+
+                const res = await fetch(`${API}/delete`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": token
+                    },
+                    body: JSON.stringify({
+                        public_id: publicId
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error);
+                }
+
+                alert("Imagem apagada!");
+                loadPhotos();
+
+            } catch (err) {
+                alert("Erro: " + err.message);
+            }
+        }
+
+        function openFile() {
+            document.getElementById("file").click();
+        }
+
+        document.getElementById("file")
+            .addEventListener("change", uploadImage);
+
+        setInterval(loadPhotos, 5000);
+
         loadPhotos();
-
-    } catch (err) {
-        alert("Erro: " + err.message);
-    }
-}
-
-/* =========================
-   OPEN FILE INPUT
-========================= */
-function openFile() {
-    document.getElementById("file").click();
-}
-
-/* =========================
-   EVENTOS
-========================= */
-document.getElementById("file")
-    .addEventListener("change", uploadImage);
-
-/* =========================
-   AUTO REFRESH (REAL TIME SIMPLES)
-========================= */
-setInterval(loadPhotos, 5000);
-
-/* INIT */
-loadPhotos();
-</script>
+    </script>
 </body>
 
 </html>
