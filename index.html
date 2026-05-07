@@ -23,7 +23,7 @@
                     <i class="fa-solid fa-camera"></i>
                     <span>Adicionar Foto</span>
                 </div>
-                <input type="file" id="file" accept="image/*">
+                <input type="file" id="file" accept="image/*" multiple>
             </div>
         </header>
 
@@ -38,8 +38,11 @@
     </div>
 
     <script>
-        const API = "https://galeriaxv.onrender.com";
-        async function loadPhotos() {
+    const API = "https://galeriaxv.onrender.com";
+
+    async function loadPhotos() {
+        try {
+
             const res = await fetch(`${API}/photos`);
             const photos = await res.json();
 
@@ -47,123 +50,203 @@
             gallery.innerHTML = "";
 
             photos.forEach(photo => {
+
+                const optimizedImage =
+                    photo.secure_url.replace(
+                        "/upload/",
+                        "/upload/w_600,q_auto,f_auto/"
+                    );
+
                 const card = document.createElement("div");
                 card.className = "photo-card";
 
                 card.innerHTML = `
-      <div class="image-container">
-        <img src="${photo.secure_url}" loading="lazy" />
-      </div>
+                <div class="image-container">
+                    <img 
+                        src="${optimizedImage}" 
+                        loading="lazy"
+                        alt="Foto do evento"
+                    />
+                </div>
 
-      <div class="card-footer">
-        <div class="download-action-btn" onclick="downloadImage('${photo.secure_url}')" title="Baixar Foto">
-          <i class="fa-solid fa-download"></i>
-        </div>
+                <div class="card-footer">
 
-        <div class="delete-action-btn" onclick="deleteImage('${photo.public_id}')" title="Apagar Foto">
-          <i class="fa-solid fa-trash"></i>
-        </div>
-      </div>
-    `;
+                    <div 
+                        class="download-action-btn" 
+                        onclick="downloadImage('${photo.secure_url}')"
+                        title="Baixar Foto"
+                    >
+                        <i class="fa-solid fa-download"></i>
+                    </div>
+
+                    <div 
+                        class="delete-action-btn" 
+                        onclick="deleteImage('${photo.public_id}')"
+                        title="Apagar Foto"
+                    >
+                        <i class="fa-solid fa-trash"></i>
+                    </div>
+
+                </div>
+            `;
 
                 gallery.appendChild(card);
             });
+
+        } catch (err) {
+            console.error(err);
+            document.getElementById("status").innerText =
+                "Erro ao carregar fotos.";
+        }
+    }
+
+    async function uploadImage() {
+
+        const fileInput = document.getElementById("file");
+        const files = Array.from(fileInput.files);
+
+        const status = document.getElementById("status");
+
+        if (!files.length) {
+            status.innerText = "Seleciona imagens.";
+            return;
         }
 
-        async function uploadImage() {
-            const fileInput = document.getElementById("file");
-            const file = fileInput.files[0];
-            const status = document.getElementById("status");
-            const preview = document.getElementById("preview");
-
-            if (!file) {
-                status.innerText = "Seleciona uma imagem primeiro.";
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append("photo", file);
-
-            status.innerText = "A enviar momento mágico...";
-
-            try {
-                const res = await fetch(`${API}/upload`, {
-                    method: "POST",
-                    body: formData
-                });
-
-                const data = await res.json();
-
-                if (!res.ok) throw new Error(data.error);
-
-                preview.src = data.url;
-                preview.style.display = "block";
-
-                status.innerText = "Upload feito com sucesso!";
-
-                loadPhotos();
-
-            } catch (err) {
-                console.error(err);
-                status.innerText = "Erro: " + err.message;
-            }
+        if (files.length > 10) {
+            status.innerText = "Máximo 10 imagens por envio.";
+            return;
         }
 
-        function downloadImage(url) {
-            fetch(url)
-                .then(res => res.blob())
-                .then(blob => {
-                    const blobUrl = window.URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = blobUrl;
-                    a.download = "foto-15-anos.jpg";
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    window.URL.revokeObjectURL(blobUrl);
+        status.innerText = `A enviar ${files.length} imagem(ns)...`;
+
+        try {
+
+            await Promise.all(
+
+                files.map(async (file) => {
+
+                    const formData = new FormData();
+                    formData.append("photo", file);
+
+                    const res = await fetch(`${API}/upload`, {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        throw new Error(data.error || "Erro no upload");
+                    }
+
                 })
-                .catch(err => {
-                    console.error("Erro ao baixar:", err);
-                    alert("Não foi possível baixar a imagem");
-                });
+
+            );
+
+            status.innerText = "Upload concluído com sucesso!";
+
+            fileInput.value = "";
+
+            loadPhotos();
+
+        } catch (err) {
+
+            console.error(err);
+
+            status.innerText =
+                "Erro ao enviar imagens: " + err.message;
         }
+    }
 
-        function openFile() {
-            document.getElementById("file").click();
-        }
+    function downloadImage(url) {
 
-        document.getElementById("file").addEventListener("change", uploadImage);
+        fetch(url)
+            .then(res => res.blob())
+            .then(blob => {
 
-        async function deleteImage(publicId) {
-            const confirmDelete = confirm("Tens a certeza que queres apagar esta foto?");
-            if (!confirmDelete) return;
+                const blobUrl =
+                    window.URL.createObjectURL(blob);
 
-            const token = prompt("Código de administrador:");
+                const a = document.createElement("a");
 
-            try {
-                const res = await fetch(`${API}/delete`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": token
-                    },
-                    body: JSON.stringify({ public_id: publicId })
-                });
+                a.href = blobUrl;
+                a.download = "foto-15-anos.jpg";
 
-                const data = await res.json();
+                document.body.appendChild(a);
 
-                if (!res.ok) throw new Error(data.error);
+                a.click();
 
-                alert("Imagem apagada com sucesso!");
-                loadPhotos();
+                a.remove();
 
-            } catch (err) {
-                alert("Erro: " + err.message);
+                window.URL.revokeObjectURL(blobUrl);
+
+            })
+            .catch(err => {
+
+                console.error(err);
+
+                alert("Não foi possível baixar a imagem.");
+
+            });
+    }
+
+    function openFile() {
+        document.getElementById("file").click();
+    }
+
+    document
+        .getElementById("file")
+        .addEventListener("change", uploadImage);
+
+    async function deleteImage(publicId) {
+
+        const confirmDelete =
+            confirm("Tens a certeza que queres apagar esta foto?");
+
+        if (!confirmDelete) return;
+
+        const token =
+            prompt("Código de administrador:");
+
+        if (!token) return;
+
+        try {
+
+            const res = await fetch(`${API}/delete`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": token
+                },
+
+                body: JSON.stringify({
+                    public_id: publicId
+                })
+
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || "Erro ao apagar");
             }
-        }
 
-        loadPhotos();
-    </script>
+            alert("Imagem apagada com sucesso!");
+
+            loadPhotos();
+
+        } catch (err) {
+
+            console.error(err);
+
+            alert("Erro: " + err.message);
+        }
+    }
+
+    loadPhotos();
+</script>
 
 </body>
 
