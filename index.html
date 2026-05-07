@@ -100,63 +100,161 @@
         }
     }
 
-    async function uploadImage() {
 
-        const fileInput = document.getElementById("file");
-        const files = Array.from(fileInput.files);
+async function compressImage(file) {
 
-        const status = document.getElementById("status");
+    return new Promise((resolve) => {
 
-        if (!files.length) {
-            status.innerText = "Seleciona imagens.";
-            return;
-        }
+        const img = new Image();
+        const reader = new FileReader();
 
-        if (files.length > 10) {
-            status.innerText = "Máximo 10 imagens por envio.";
-            return;
-        }
+        reader.readAsDataURL(file);
 
-        status.innerText = `A enviar ${files.length} imagem(ns)...`;
+        reader.onload = (e) => {
 
-        try {
+            img.src = e.target.result;
 
-            await Promise.all(
+            img.onload = () => {
 
-                files.map(async (file) => {
+                const canvas =
+                    document.createElement("canvas");
 
-                    const formData = new FormData();
-                    formData.append("photo", file);
+                const MAX_WIDTH = 1600;
 
-                    const res = await fetch(`${API}/upload`, {
+                let width = img.width;
+                let height = img.height;
+
+                if (width > MAX_WIDTH) {
+
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx =
+                    canvas.getContext("2d");
+
+                ctx.drawImage(
+                    img,
+                    0,
+                    0,
+                    width,
+                    height
+                );
+
+                canvas.toBlob(
+
+                    (blob) => {
+                        resolve(blob);
+                    },
+
+                    "image/jpeg",
+
+                    0.7
+
+                );
+
+            };
+
+        };
+
+    });
+
+}
+
+async function uploadImage() {
+
+    const fileInput =
+        document.getElementById("file");
+
+    const files =
+        Array.from(fileInput.files);
+
+    const status =
+        document.getElementById("status");
+
+    if (!files.length) {
+
+        status.innerText =
+            "Seleciona imagens.";
+
+        return;
+    }
+
+    if (files.length > 10) {
+
+        status.innerText =
+            "Máximo 10 imagens.";
+
+        return;
+    }
+
+    status.innerText =
+        `A preparar ${files.length} imagens...`;
+
+    try {
+
+        await Promise.all(
+
+            files.map(async (file) => {
+
+                const compressed =
+                    await compressImage(file);
+
+                const formData =
+                    new FormData();
+
+                formData.append(
+                    "photo",
+                    compressed,
+                    file.name
+                );
+
+                const res =
+                    await fetch(`${API}/upload`, {
+
                         method: "POST",
                         body: formData
+
                     });
 
-                    const data = await res.json();
+                const data =
+                    await res.json();
 
-                    if (!res.ok) {
-                        throw new Error(data.error || "Erro no upload");
-                    }
+                if (!res.ok) {
 
-                })
+                    throw new Error(
+                        data.error ||
+                        "Erro no upload"
+                    );
 
-            );
+                }
 
-            status.innerText = "Upload concluído com sucesso!";
+            })
 
-            fileInput.value = "";
+        );
 
-            loadPhotos();
+        status.innerText =
+            "Upload concluído!";
 
-        } catch (err) {
+        fileInput.value = "";
 
-            console.error(err);
+        loadPhotos();
 
-            status.innerText =
-                "Erro ao enviar imagens: " + err.message;
-        }
+    } catch (err) {
+
+        console.error(err);
+
+        status.innerText =
+            "Erro: " + err.message;
+
     }
+
+}
+
 
     function downloadImage(url) {
 
