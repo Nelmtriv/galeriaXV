@@ -18,7 +18,11 @@
                 <p>Memórias Eternizadas</p>
             </div>
 
-            <div class="upload-area">
+            <div class="header-actions">
+                <button class="admin-toggle-btn" id="adminBtn" onclick="toggleAdminMode()">
+                    <i class="fa-solid fa-lock"></i>
+                    <span>Admin</span>
+                </button>
                 <div class="static-upload-btn" onclick="openFile()">
                     <i class="fa-solid fa-camera"></i>
                     <span>Adicionar Foto</span>
@@ -29,194 +33,259 @@
 
         <div class="system-messages">
             <p id="status"></p>
-            <img id="preview" style="display:none;" />
+            <div class="upload-progress" id="progressContainer">
+                <div class="upload-progress-bar" id="progressBar"></div>
+            </div>
         </div>
 
         <div class="gold-line"></div>
 
         <div id="gallery" class="masonry-grid"></div>
     </div>
+
     <div id="lightbox" class="lightbox">
-        <img id="lightbox-img" />
+        <button class="lightbox-close" onclick="closeLightbox()">×</button>
+        <button class="lightbox-nav lightbox-prev" onclick="prevPhoto()">‹</button>
+        <img id="lightbox-img" alt="Foto em tamanho completo" />
+        <button class="lightbox-nav lightbox-next" onclick="nextPhoto()">›</button>
+        <div class="lightbox-counter" id="lightbox-counter"></div>
     </div>
 
     <script>
         const API = "https://galeriaxv.onrender.com";
 
+        let currentPhotos = [];
+        let currentIndex = 0;
+        let isLightboxOpen = false;
         let lastCount = 0;
+        let firstLoad = true;
+        let adminToken = sessionStorage.getItem("adminToken") || null;
 
-        function openLightbox(url) {
+        if (adminToken) {
+            const btn = document.getElementById("adminBtn");
+            btn.classList.add("active");
+            btn.querySelector("i").className = "fa-solid fa-unlock";
+            btn.querySelector("span").textContent = "Sair";
+        }
+
+        function openLightbox(index) {
+            currentIndex = index;
             const lightbox = document.getElementById("lightbox");
-            const img = document.getElementById("lightbox-img");
-
-            img.src = url;
+            lightbox.classList.remove("closing");
+            updateLightboxImage();
             lightbox.style.display = "flex";
+            isLightboxOpen = true;
+        }
+
+        function updateLightboxImage() {
+            const img = document.getElementById("lightbox-img");
+            const counter = document.getElementById("lightbox-counter");
+            const photo = currentPhotos[currentIndex];
+            img.style.opacity = "0";
+            img.src = photo.secure_url;
+            img.onload = () => { img.style.opacity = "1"; };
+            counter.textContent = `${currentIndex + 1} / ${currentPhotos.length}`;
+        }
+
+        function prevPhoto() {
+            currentIndex = (currentIndex - 1 + currentPhotos.length) % currentPhotos.length;
+            updateLightboxImage();
+        }
+
+        function nextPhoto() {
+            currentIndex = (currentIndex + 1) % currentPhotos.length;
+            updateLightboxImage();
         }
 
         function closeLightbox() {
-            document.getElementById("lightbox").style.display = "none";
+            const lightbox = document.getElementById("lightbox");
+            lightbox.classList.add("closing");
+            setTimeout(() => {
+                lightbox.style.display = "none";
+                lightbox.classList.remove("closing");
+                isLightboxOpen = false;
+            }, 200);
         }
 
         document.getElementById("lightbox").addEventListener("click", (e) => {
-            if (e.target.id === "lightbox") {
-                closeLightbox();
-            }
+            if (e.target.id === "lightbox") closeLightbox();
         });
+
+        document.addEventListener("keydown", (e) => {
+            if (!isLightboxOpen) return;
+            if (e.key === "Escape")     closeLightbox();
+            if (e.key === "ArrowRight") nextPhoto();
+            if (e.key === "ArrowLeft")  prevPhoto();
+        });
+
+        function renderGallery(photos) {
+            const gallery = document.getElementById("gallery");
+            gallery.innerHTML = "";
+
+            if (photos.length === 0) {
+                gallery.innerHTML = `
+                    <div class="gallery-state">
+                        <i class="fa-solid fa-camera"></i>
+                        <p>Nenhuma foto ainda. Sê o primeiro a partilhar!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            photos.forEach((photo, index) => {
+                const optimizedImage = photo.secure_url.replace(
+                    "/upload/",
+                    "/upload/w_600,q_auto,f_auto/"
+                );
+
+                const card = document.createElement("div");
+                card.className = "photo-card";
+                card.style.animationDelay = `${Math.min(index * 0.03, 0.3)}s`;
+
+                const imageContainer = document.createElement("div");
+                imageContainer.className = "image-container";
+
+                const img = document.createElement("img");
+                img.src = optimizedImage;
+                img.loading = "lazy";
+                img.alt = `Foto do evento ${index + 1}`;
+                img.addEventListener("click", () => openLightbox(index));
+
+                const cardFooter = document.createElement("div");
+                cardFooter.className = "card-footer";
+
+                const downloadBtn = document.createElement("div");
+                downloadBtn.className = "download-action-btn";
+                downloadBtn.innerHTML = `<i class="fa-solid fa-download"></i>`;
+                downloadBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    downloadImage(photo.secure_url);
+                });
+
+                const deleteBtn = document.createElement("div");
+                deleteBtn.className = "delete-action-btn" + (adminToken ? "" : " hidden");
+                deleteBtn.innerHTML = `<i class="fa-solid fa-trash"></i>`;
+                deleteBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    deleteImage(photo.public_id);
+                });
+
+                imageContainer.appendChild(img);
+                cardFooter.appendChild(downloadBtn);
+                cardFooter.appendChild(deleteBtn);
+                card.appendChild(imageContainer);
+                card.appendChild(cardFooter);
+                gallery.appendChild(card);
+            });
+        }
+
         async function loadPhotos() {
+            const gallery = document.getElementById("gallery");
+
+            if (firstLoad) {
+                gallery.innerHTML = `
+                    <div class="gallery-state">
+                        <div class="spinner"></div>
+                        <p>A carregar fotos...</p>
+                    </div>
+                `;
+            }
+
             try {
                 const res = await fetch(`${API}/photos`);
                 const photos = await res.json();
 
-                const gallery = document.getElementById("gallery");
+                if (!firstLoad && photos.length === lastCount) return;
 
-
-                if (photos.length === lastCount) return;
+                firstLoad = false;
                 lastCount = photos.length;
-
-                gallery.innerHTML = "";
-
-                photos.forEach(photo => {
-
-                    const optimizedImage =
-                        photo.secure_url.replace(
-                            "/upload/",
-                            "/upload/w_600,q_auto,f_auto/"
-                        );
-
-                    const card = document.createElement("div");
-                    card.className = "photo-card";
-
-                    card.innerHTML = `
-                <div class="image-container">
-                    <img 
-    src="${optimizedImage}" 
-    loading="lazy"
-    alt="Foto do evento"
-    onclick="openLightbox('${photo.secure_url}')"
-    style="cursor:pointer;"
-/>
-                </div>
-
-                <div class="card-footer">
-
-                    <div 
-                        class="download-action-btn" 
-                        onclick="downloadImage('${photo.secure_url}')"
-                    >
-                        <i class="fa-solid fa-download"></i>
-                    </div>
-
-                    <div 
-                        class="delete-action-btn" 
-                        onclick="deleteImage('${photo.public_id}')"
-                    >
-                        <i class="fa-solid fa-trash"></i>
-                    </div>
-
-                </div>
-            `;
-
-                    gallery.appendChild(card);
-                });
+                currentPhotos = photos;
+                renderGallery(photos);
 
             } catch (err) {
                 console.error(err);
+                if (firstLoad) {
+                    firstLoad = false;
+                    gallery.innerHTML = `
+                        <div class="gallery-state">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <p>Erro ao carregar fotos. Tenta novamente mais tarde.</p>
+                        </div>
+                    `;
+                }
             }
         }
 
         async function compressImage(file) {
             return new Promise((resolve) => {
-
                 const img = new Image();
                 const reader = new FileReader();
-
                 reader.readAsDataURL(file);
-
                 reader.onload = (e) => {
-
                     img.src = e.target.result;
-
                     img.onload = () => {
-
                         const canvas = document.createElement("canvas");
-
                         const MAX_WIDTH = 1600;
-
                         let width = img.width;
                         let height = img.height;
-
                         if (width > MAX_WIDTH) {
                             height *= MAX_WIDTH / width;
                             width = MAX_WIDTH;
                         }
-
                         canvas.width = width;
                         canvas.height = height;
-
-                        const ctx = canvas.getContext("2d");
-
-                        ctx.drawImage(img, 0, 0, width, height);
-
-                        canvas.toBlob((blob) => {
-                            resolve(blob);
-                        }, "image/jpeg", 0.7);
-
+                        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+                        canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.7);
                     };
-
                 };
-
             });
         }
 
         async function uploadImage() {
-
             const fileInput = document.getElementById("file");
             const files = Array.from(fileInput.files);
             const status = document.getElementById("status");
+            const progressContainer = document.getElementById("progressContainer");
+            const progressBar = document.getElementById("progressBar");
 
-            if (!files.length) {
-                status.innerText = "Seleciona imagens.";
-                return;
-            }
+            if (!files.length) { status.innerText = "Seleciona imagens."; return; }
+            if (files.length > 10) { status.innerText = "Máximo 10 imagens por vez."; return; }
 
-            if (files.length > 10) {
-                status.innerText = "Máximo 10 imagens por vez.";
-                return;
-            }
-
-            status.innerText = `A enviar ${files.length} imagens...`;
+            progressContainer.style.display = "block";
+            progressBar.style.width = "0%";
 
             try {
+                for (let i = 0; i < files.length; i++) {
+                    status.innerText = `A enviar foto ${i + 1} de ${files.length}...`;
+                    progressBar.style.width = `${(i / files.length) * 100}%`;
 
-                for (const file of files) {
-
-                    status.innerText = `A processar ${file.name}...`;
-
-                    const compressed = await compressImage(file);
-
+                    const compressed = await compressImage(files[i]);
                     const formData = new FormData();
-                    formData.append("photo", compressed, file.name);
+                    formData.append("photo", compressed, files[i].name);
 
-                    const res = await fetch(`${API}/upload`, {
-                        method: "POST",
-                        body: formData
-                    });
-
+                    const res = await fetch(`${API}/upload`, { method: "POST", body: formData });
                     const data = await res.json();
-
-                    if (!res.ok) {
-                        throw new Error(data.error || "Erro no upload");
-                    }
+                    if (!res.ok) throw new Error(data.error || "Erro no upload");
                 }
 
-                status.innerText = "Upload concluído!";
+                progressBar.style.width = "100%";
+                const n = files.length;
+                status.innerText = `${n} foto${n > 1 ? "s" : ""} enviada${n > 1 ? "s" : ""} com sucesso!`;
                 fileInput.value = "";
 
+                setTimeout(() => {
+                    progressContainer.style.display = "none";
+                    progressBar.style.width = "0%";
+                    status.innerText = "";
+                }, 2500);
+
+                lastCount = -1;
                 loadPhotos();
 
             } catch (err) {
                 console.error(err);
                 status.innerText = "Erro: " + err.message;
+                progressContainer.style.display = "none";
             }
         }
 
@@ -224,54 +293,47 @@
             fetch(url)
                 .then(res => res.blob())
                 .then(blob => {
-
                     const blobUrl = window.URL.createObjectURL(blob);
-
                     const a = document.createElement("a");
                     a.href = blobUrl;
                     a.download = "foto-15-anos.jpg";
-
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
-
                     window.URL.revokeObjectURL(blobUrl);
-
                 })
-                .catch(err => {
-                    console.error(err);
-                    alert("Não foi possível baixar a imagem.");
-                });
+                .catch(() => alert("Não foi possível baixar a imagem."));
         }
 
         async function deleteImage(publicId) {
-
-            const confirmDelete = confirm("Tens a certeza?");
-            if (!confirmDelete) return;
-
-            const token = prompt("Código de administrador:");
-            if (!token) return;
+            if (!adminToken) return;
+            if (!confirm("Apagar esta foto?")) return;
 
             try {
-
                 const res = await fetch(`${API}/delete`, {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": token
-                    },
-                    body: JSON.stringify({
-                        public_id: publicId
-                    })
+                    headers: { "Content-Type": "application/json", "Authorization": adminToken },
+                    body: JSON.stringify({ public_id: publicId })
                 });
-
                 const data = await res.json();
 
                 if (!res.ok) {
+                    if (res.status === 401 || res.status === 403) {
+                        adminToken = null;
+                        sessionStorage.removeItem("adminToken");
+                        const btn = document.getElementById("adminBtn");
+                        btn.classList.remove("active");
+                        btn.querySelector("i").className = "fa-solid fa-lock";
+                        btn.querySelector("span").textContent = "Admin";
+                        document.querySelectorAll(".delete-action-btn").forEach(b => b.classList.add("hidden"));
+                        alert("Código inválido. Sessão encerrada.");
+                        return;
+                    }
                     throw new Error(data.error);
                 }
 
-                alert("Imagem apagada!");
+                if (isLightboxOpen) closeLightbox();
+                lastCount = -1;
                 loadPhotos();
 
             } catch (err) {
@@ -279,15 +341,39 @@
             }
         }
 
+        function toggleAdminMode() {
+            const btn = document.getElementById("adminBtn");
+            const icon = btn.querySelector("i");
+            const label = btn.querySelector("span");
+
+            if (adminToken) {
+                adminToken = null;
+                sessionStorage.removeItem("adminToken");
+                btn.classList.remove("active");
+                icon.className = "fa-solid fa-lock";
+                label.textContent = "Admin";
+                document.querySelectorAll(".delete-action-btn").forEach(b => b.classList.add("hidden"));
+                return;
+            }
+
+            const token = prompt("Código de administrador:");
+            if (!token) return;
+
+            adminToken = token;
+            sessionStorage.setItem("adminToken", token);
+            btn.classList.add("active");
+            icon.className = "fa-solid fa-unlock";
+            label.textContent = "Sair";
+            document.querySelectorAll(".delete-action-btn").forEach(b => b.classList.remove("hidden"));
+        }
+
         function openFile() {
             document.getElementById("file").click();
         }
 
-        document.getElementById("file")
-            .addEventListener("change", uploadImage);
+        document.getElementById("file").addEventListener("change", uploadImage);
 
-        setInterval(loadPhotos, 5000);
-
+        setInterval(loadPhotos, 15000);
         loadPhotos();
     </script>
 </body>
